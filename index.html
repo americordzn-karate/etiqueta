@@ -55,6 +55,7 @@ summary{cursor:pointer;font-weight:bold;font-size:14px}
 <button id="copyLog" class="sec">Copiar registro</button>
 <div id="log"></div>
 </details>
+<button id="back" class="sec" style="margin-top:14px">← Volver a AppSheet</button>
 </main>
 
 <script>
@@ -2579,13 +2580,18 @@ const $ = id => document.getElementById(id);
 const QR_URL = "https://youtu.be/0u4FgJoC_qw";   // QR de la categoría Uniformes
 const QR_FRACTION = 0.70;                        // el QR ocupa el 70 % del alto de la etiqueta
 const FONT = "Arial, Helvetica, sans-serif";
+// Dirección de su app de AppSheet (ej. "https://www.appsheet.com/start/XXXXXXXX"). También puede enviarse en la URL con &volver=...
+const APPSHEET_URL = "https://www.appsheet.com/start/ebc837fc-900c-4559-ba3e-ca02b965e134";
 
 /* ---------- Reglas de contenido por categoría ---------- */
 const norm = s => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
 function parseProduct(cat, nombreRaw) {
-  const nombre = (nombreRaw || "").trim().replace(/\s+/g, " ");
-  const tk = nombre ? nombre.split(" ") : [];
   const c = norm(cat);
+  let nombre = (nombreRaw || "").trim();
+  if (c.startsWith("playera")) nombre = nombre.replace(/[^\p{L}\p{N}]+$/u, "");   // quita símbolos al final (□, ♥, etc.)
+  nombre = nombre.replace(/\s+/g, " ").trim();
+  const tk = nombre ? nombre.split(" ") : [];
+  const logoLeft = c.startsWith("equip") || c.startsWith("playera");               // logo a la izquierda, como el QR
   let name = nombre, talla = "", qr = false;
   if (c.startsWith("uniform")) {                              // "KarateGi Blanco 2" → nombre + talla 2
     qr = true;
@@ -2595,7 +2601,7 @@ function parseProduct(cat, nombreRaw) {
   } else if (c.startsWith("playera")) {                       // "01B Infantil CH" → se omite "01B", talla CH
     if (tk.length >= 2) { talla = tk.pop(); tk.shift(); name = tk.join(" "); }
   }                                                           // Cintas y demás: solo nombre + precio
-  return { name: name.toUpperCase(), talla: talla.toUpperCase(), qr };
+  return { name: name.toUpperCase(), talla: talla.toUpperCase(), qr, logoLeft };
 }
 function fmtPrice(v) {
   const t = String(v ?? "").replace(/[$,\s]/g, "");
@@ -2640,8 +2646,13 @@ function drawLabel() {
   // Columna de contenido (a la derecha del QR si existe)
   let x0 = 10, x1 = W - 10;
   if (d.qr) { const S = Math.round(H * QR_FRACTION); drawQR(S, 0, Math.round((H - S) / 2)); x0 = S + 12; }
+  else if (d.logoLeft && logoImg) {                           // Equipo y Playeras: logo en el lugar del QR
+    const S = Math.round(H * QR_FRACTION), k = Math.min(S / logoImg.width, S / logoImg.height);
+    const lw = Math.round(logoImg.width * k), lh = Math.round(logoImg.height * k);
+    ctx.drawImage(logoImg, 0, Math.round((H - lh) / 2), lw, lh); x0 = lw + 12;
+  }
   const colW = x1 - x0, cx = (x0 + x1) / 2, G = 11, avail = H - 14;
-  const logoH = logoImg ? 30 : 0;
+  const logoH = (logoImg && !d.logoLeft) ? 30 : 0;      // logo sobre el texto solo en Uniformes/Cintas/otras
 
   // Busca el mayor tamaño N que cabe. Con talla: nombre N, talla 2N (negrita), precio 1.5N (75 % de la talla).
   // Sin talla: el nombre pasa a ser el elemento grande (2N, negrita) y el precio 1.5N.
@@ -2668,7 +2679,7 @@ function drawLabel() {
 
   let y = Math.round((H - fit.total) / 2);
   ctx.textAlign = "center"; ctx.textBaseline = "alphabetic"; ctx.fillStyle = "#000";
-  if (logoImg) {
+  if (logoH) {
     const k = Math.min(logoH / logoImg.height, colW / logoImg.width), w = logoImg.width * k, h = logoImg.height * k;
     ctx.drawImage(logoImg, cx - w / 2, y + (logoH - h) / 2, w, h); y += logoH + G;
   }
@@ -2715,6 +2726,12 @@ $("print").onclick = async () => {
 ["cat", "nombre", "precio", "hmm"].forEach(id => $(id).addEventListener("input", drawLabel));
 $("ox").addEventListener("input", () => { $("oxv").textContent = $("ox").value; store.set("ox", $("ox").value); });
 $("dens").addEventListener("change", () => store.set("dens", $("dens").value));
+$("back").onclick = () => {
+  const dest = new URLSearchParams(location.search).get("volver") || APPSHEET_URL;
+  if (dest) { location.href = dest; return; }
+  if (history.length > 1) { history.back(); return; }
+  window.close(); status("Cierre esta pestaña para volver a AppSheet", "err");
+};
 $("clear").onclick = () => { $("log").textContent = ""; };
 $("copyLog").onclick = async () => { try { await navigator.clipboard.writeText($("log").textContent); status("Registro copiado", "ok"); } catch (e) {} };
 
